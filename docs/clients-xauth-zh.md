@@ -51,8 +51,8 @@ VPN 连接成功后，你会在 VPN Connect 状态窗口中看到 **tunnel enabl
 1. 在 **服务器地址** 字段中输入`你的 VPN 服务器 IP`。
 1. 在 **帐户名称** 字段中输入`你的 VPN 用户名`。
 1. 在 **密码** 字段中输入`你的 VPN 密码`。
-1. 单击 **鉴定设置** 按钮。
-1. 在 **机器鉴定** 部分，选择 **共享的密钥** 单选按钮，然后输入`你的 VPN IPsec PSK`。
+1. 单击 **认证设置** 按钮。
+1. 在 **机器认证** 部分，选择 **共享的密钥** 单选按钮，然后输入`你的 VPN IPsec PSK`。
 1. 保持 **群组名称** 字段空白。
 1. 单击 **好**。
 1. 选中 **在菜单栏中显示 VPN 状态** 复选框。
@@ -65,7 +65,7 @@ VPN 连接成功后，你会在 VPN Connect 状态窗口中看到 **tunnel enabl
 ## Android
 
 1. 启动 **设置** 应用程序。
-1. 在 **无线和网络** 部分单击 **更多...**。
+1. 单击 **网络和互联网**。或者，如果你使用 Android 7 或更早版本，在 **无线和网络** 部分单击 **更多...**。
 1. 单击 **VPN**。
 1. 单击 **添加VPN配置文件** 或窗口右上角的 **+**。
 1. 在 **名称** 字段中输入任意内容。
@@ -106,7 +106,7 @@ VPN 连接成功后，会在通知栏显示图标。最后你可以到 <a href="
 
 ### Fedora 和 CentOS
 
-Fedora 28 （和更新版本）和 CentOS 7 用户可以安装 <a href="https://apps.fedoraproject.org/packages/s/libreswan" target="_blank">NetworkManager-libreswan-gnome</a> 软件包，然后通过 GUI 配置 IPsec/XAuth VPN 客户端。
+Fedora 28 （和更新版本）和 CentOS 8/7 用户可以使用 `yum` 安装 `NetworkManager-libreswan-gnome` 软件包，然后通过 GUI 配置 IPsec/XAuth VPN 客户端。
 
 1. 进入 Settings -> Network -> VPN。单击 **+** 按钮。
 1. 选择 **IPsec based VPN**。
@@ -137,7 +137,7 @@ VPN 连接成功后，你可以到 <a href="https://www.ipchicken.com" target="_
 
 注： 这个协议仅适用于本文档。
 
-版权所有 (C) 2016-2019 Lin Song   
+版权所有 (C) 2016-2020 Lin Song   
 基于 <a href="https://github.com/StreisandEffect/streisand/blob/6aa6b6b2735dd829ca8c417d72eb2768a89b6639/playbooks/roles/l2tp-ipsec/templates/instructions.md.j2" target="_blank">Joshua Lund 的工作</a> (版权所有 2014-2016)
 
 本程序为自由软件，在自由软件联盟发布的<a href="https://www.gnu.org/licenses/gpl.html" target="_blank"> GNU 通用公共许可协议</a>的约束下，你可以对其进行再发布及修改。协议版本为第三版或（随你）更新的版本。

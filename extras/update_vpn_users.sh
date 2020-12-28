@@ -2,7 +2,7 @@
 #
 # Script to update VPN users for both IPsec/L2TP and Cisco IPsec
 #
-# Copyright (C) 2018-2019 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2018-2020 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -27,7 +27,7 @@ YOUR_PASSWORDS=''
 # =====================================================
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-SYS_DT=$(date +%F-%T)
+SYS_DT=$(date +%F-%T | tr ':' '_')
 
 exiterr()  { echo "Error: $1" >&2; exit 1; }
 conf_bk() { /bin/cp -f "$1" "$1.old-$SYS_DT" 2>/dev/null; }
@@ -123,7 +123,7 @@ Write these down. You'll need them to connect!
 
 EOF
 
-printf "Do you wish to continue? [y/N] "
+printf "Do you want to continue? [y/N] "
 read -r response
 case $response in
   [yY][eE][sS]|[yY])
@@ -132,9 +132,7 @@ case $response in
     echo
     ;;
   *)
-    echo
-    echo "Aborting. No changes were made."
-    echo
+    echo "Abort. No changes were made."
     exit 1
     ;;
 esac

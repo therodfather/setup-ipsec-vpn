@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Script for automatic setup of an IPsec VPN server on CentOS/RHEL 6 and 7.
+# Script for automatic setup of an IPsec VPN server on CentOS/RHEL 7 and 8.
 # Works on any dedicated server or virtual private server (VPS) except OpenVZ.
 #
 # DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
@@ -8,7 +8,7 @@
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2015-2019 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2015-2020 Lin Song <linsongui@gmail.com>
 # Based on the work of Thomas Sarlandie (Copyright 2012)
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
@@ -30,11 +30,12 @@ YOUR_PASSWORD=''
 
 # Important notes:   https://git.io/vpnnotes
 # Setup VPN clients: https://git.io/vpnclients
+# IKEv2 guide:       https://git.io/ikev2
 
 # =====================================================
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-SYS_DT=$(date +%F-%T)
+SYS_DT=$(date +%F-%T | tr ':' '_')
 
 exiterr()  { echo "Error: $1" >&2; exit 1; }
 exiterr2() { exiterr "'yum install' failed."; }
@@ -48,8 +49,10 @@ check_ip() {
 
 vpnsetup() {
 
-if ! grep -qs -e "release 6" -e "release 7" /etc/redhat-release; then
-  exiterr "This script only supports CentOS/RHEL 6 and 7."
+if ! grep -qs -e "release 7" -e "release 8" /etc/redhat-release; then
+  echo "Error: This script only supports CentOS/RHEL 7 and 8." >&2
+  echo "For Ubuntu/Debian, use https://git.io/vpnsetup" >&2
+  exit 1
 fi
 
 if [ -f /proc/user_beancounters ]; then
@@ -103,6 +106,11 @@ case "$VPN_IPSEC_PSK $VPN_USER $VPN_PASSWORD" in
     ;;
 esac
 
+if { [ -n "$VPN_DNS_SRV1" ] && ! check_ip "$VPN_DNS_SRV1"; } \
+  || { [ -n "$VPN_DNS_SRV2" ] && ! check_ip "$VPN_DNS_SRV2"; } then
+  exiterr "The DNS server specified is invalid."
+fi
+
 bigecho "VPN setup in progress... Please be patient."
 
 # Create and change to working dir
@@ -111,7 +119,7 @@ cd /opt/src || exit 1
 
 bigecho "Installing packages required for setup..."
 
-yum -y install wget bind-utils openssl \
+yum -y install wget bind-utils openssl tar \
   iptables iproute gawk grep sed net-tools || exiterr2
 
 bigecho "Trying to auto discover IP of this server..."
@@ -137,21 +145,32 @@ yum -y install epel-release || yum -y install "$epel_url" || exiterr2
 bigecho "Installing packages required for the VPN..."
 
 REPO1='--enablerepo=epel'
-REPO2='--enablerepo=*server-optional*'
+REPO2='--enablerepo=*server-*optional*'
 REPO3='--enablerepo=*releases-optional*'
+REPO4='--enablerepo=[Pp]ower[Tt]ools'
 
 yum -y install nss-devel nspr-devel pkgconfig pam-devel \
-  libcap-ng-devel libselinux-devel curl-devel \
+  libcap-ng-devel libselinux-devel curl-devel nss-tools \
   flex bison gcc make ppp || exiterr2
 
 yum "$REPO1" -y install xl2tpd || exiterr2
 
-if grep -qs "release 6" /etc/redhat-release; then
-  yum -y remove libevent-devel
-  yum "$REPO2" "$REPO3" -y install libevent2-devel fipscheck-devel || exiterr2
-else
+use_nft=0
+if grep -qs "release 7" /etc/redhat-release; then
   yum -y install systemd-devel iptables-services || exiterr2
   yum "$REPO2" "$REPO3" -y install libevent-devel fipscheck-devel || exiterr2
+else
+  if grep -qs "Red Hat" /etc/redhat-release; then
+    REPO4='--enablerepo=codeready-builder-for-rhel-8-*'
+  fi
+  yum "$REPO4" -y install systemd-devel libevent-devel fipscheck-devel || exiterr2
+  if systemctl is-active --quiet firewalld.service \
+    || grep -qs "hwdsl2 VPN script" /etc/sysconfig/nftables.conf; then
+    use_nft=1
+    yum -y install nftables || exiterr2
+  else
+    yum -y install iptables-services || exiterr2
+  fi
 fi
 
 bigecho "Installing Fail2Ban to protect SSH..."
@@ -160,7 +179,7 @@ yum "$REPO1" -y install fail2ban || exiterr2
 
 bigecho "Compiling and installing Libreswan..."
 
-SWAN_VER=3.29
+SWAN_VER=4.1
 swan_file="libreswan-$SWAN_VER.tar.gz"
 swan_url1="https://github.com/libreswan/libreswan/archive/v$SWAN_VER.tar.gz"
 swan_url2="https://download.libreswan.org/$swan_file"
@@ -170,14 +189,17 @@ fi
 /bin/rm -rf "/opt/src/libreswan-$SWAN_VER"
 tar xzf "$swan_file" && /bin/rm -f "$swan_file"
 cd "libreswan-$SWAN_VER" || exit 1
+sed -i 's/ sysv )/ sysvinit )/' programs/setup/setup.in
 cat > Makefile.inc.local <<'EOF'
-WERROR_CFLAGS =
-USE_DNSSEC = false
-USE_DH31 = false
-USE_NSS_AVA_COPY = true
-USE_NSS_IPSEC_PROFILE = false
-USE_GLIBC_KERN_FLIP_HEADERS = true
+WERROR_CFLAGS=-w
+USE_DNSSEC=false
+USE_DH2=true
+USE_NSS_KDF=false
+FINALNSSDIR=/etc/ipsec.d
 EOF
+if ! grep -qs IFLA_XFRM_LINK /usr/include/linux/if_link.h; then
+  echo "USE_XFRM_INTERFACE_IFLA_HEADER=true" >> Makefile.inc.local
+fi
 NPROCS=$(grep -c ^processor /proc/cpuinfo)
 [ -z "$NPROCS" ] && NPROCS=1
 make "-j$((NPROCS+1))" -s base && make -s install-base
@@ -226,7 +248,7 @@ conn shared
   ikev2=never
   ike=aes256-sha2,aes128-sha2,aes256-sha1,aes128-sha1,aes256-sha2;modp1024,aes128-sha1;modp1024
   phase2alg=aes_gcm-null,aes128-sha1,aes256-sha1,aes256-sha2_512,aes128-sha2,aes256-sha2
-  sha2-truncbug=yes
+  sha2-truncbug=no
 
 conn l2tp-psk
   auto=add
@@ -247,9 +269,11 @@ conn xauth-psk
   rightmodecfgclient=yes
   modecfgpull=yes
   xauthby=file
-  ike-frag=yes
+  fragmentation=yes
   cisco-unity=yes
   also=shared
+
+include /etc/ipsec.d/*.conf
 EOF
 
 # Specify IPsec PSK
@@ -314,27 +338,16 @@ bigecho "Updating sysctl settings..."
 
 if ! grep -qs "hwdsl2 VPN script" /etc/sysctl.conf; then
   conf_bk "/etc/sysctl.conf"
-  if [ "$(getconf LONG_BIT)" = "64" ]; then
-    SHM_MAX=68719476736
-    SHM_ALL=4294967296
-  else
-    SHM_MAX=4294967295
-    SHM_ALL=268435456
-  fi
 cat >> /etc/sysctl.conf <<EOF
 
 # Added by hwdsl2 VPN script
 kernel.msgmnb = 65536
 kernel.msgmax = 65536
-kernel.shmmax = $SHM_MAX
-kernel.shmall = $SHM_ALL
 
 net.ipv4.ip_forward = 1
-net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv4.conf.all.send_redirects = 0
 net.ipv4.conf.all.rp_filter = 0
-net.ipv4.conf.default.accept_source_route = 0
 net.ipv4.conf.default.accept_redirects = 0
 net.ipv4.conf.default.send_redirects = 0
 net.ipv4.conf.default.rp_filter = 0
@@ -348,21 +361,45 @@ net.ipv4.tcp_wmem = 10240 87380 12582912
 EOF
 fi
 
+F2B_FILE=/etc/fail2ban/jail.local
+if [ ! -f "$F2B_FILE" ]; then
+  bigecho "Creating basic Fail2Ban rules..."
+cat > "$F2B_FILE" <<'EOF'
+[ssh-iptables]
+enabled = true
+filter = sshd
+logpath = /var/log/secure
+EOF
+
+  if [ "$use_nft" = "1" ]; then
+cat >> "$F2B_FILE" <<'EOF'
+port = ssh
+banaction = nftables-multiport[blocktype=drop]
+EOF
+  else
+cat >> "$F2B_FILE" <<'EOF'
+action = iptables[name=SSH, port=ssh, protocol=tcp]
+EOF
+  fi
+fi
+
 bigecho "Updating IPTables rules..."
 
-# Check if rules need updating
+IPT_FILE=/etc/sysconfig/iptables
+[ "$use_nft" = "1" ] && IPT_FILE=/etc/sysconfig/nftables.conf
 ipt_flag=0
-IPT_FILE="/etc/sysconfig/iptables"
-if ! grep -qs "hwdsl2 VPN script" "$IPT_FILE" \
-   || ! iptables -t nat -C POSTROUTING -s "$L2TP_NET" -o "$NET_IFACE" -j MASQUERADE 2>/dev/null \
-   || ! iptables -t nat -C POSTROUTING -s "$XAUTH_NET" -o "$NET_IFACE" -m policy --dir out --pol none -j MASQUERADE 2>/dev/null; then
+if ! grep -qs "hwdsl2 VPN script" "$IPT_FILE"; then
   ipt_flag=1
 fi
 
-# Add IPTables rules for VPN
 if [ "$ipt_flag" = "1" ]; then
   service fail2ban stop >/dev/null 2>&1
-  iptables-save > "$IPT_FILE.old-$SYS_DT"
+  if [ "$use_nft" = "1" ]; then
+    nft list ruleset > "$IPT_FILE.old-$SYS_DT"
+    chmod 600 "$IPT_FILE.old-$SYS_DT"
+  else
+    iptables-save > "$IPT_FILE.old-$SYS_DT"
+  fi
   iptables -I INPUT 1 -p udp --dport 1701 -m policy --dir in --pol none -j DROP
   iptables -I INPUT 2 -m conntrack --ctstate INVALID -j DROP
   iptables -I INPUT 3 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
@@ -375,35 +412,35 @@ if [ "$ipt_flag" = "1" ]; then
   iptables -I FORWARD 4 -i ppp+ -o ppp+ -s "$L2TP_NET" -d "$L2TP_NET" -j ACCEPT
   iptables -I FORWARD 5 -i "$NET_IFACE" -d "$XAUTH_NET" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
   iptables -I FORWARD 6 -s "$XAUTH_NET" -o "$NET_IFACE" -j ACCEPT
-  # Uncomment if you wish to disallow traffic between VPN clients themselves
+  # Uncomment to disallow traffic between VPN clients
   # iptables -I FORWARD 2 -i ppp+ -o ppp+ -s "$L2TP_NET" -d "$L2TP_NET" -j DROP
   # iptables -I FORWARD 3 -s "$XAUTH_NET" -d "$XAUTH_NET" -j DROP
-  iptables -A FORWARD -j DROP
   iptables -t nat -I POSTROUTING -s "$XAUTH_NET" -o "$NET_IFACE" -m policy --dir out --pol none -j MASQUERADE
   iptables -t nat -I POSTROUTING -s "$L2TP_NET" -o "$NET_IFACE" -j MASQUERADE
   echo "# Modified by hwdsl2 VPN script" > "$IPT_FILE"
-  iptables-save >> "$IPT_FILE"
-fi
-
-bigecho "Creating basic Fail2Ban rules..."
-
-if [ ! -f /etc/fail2ban/jail.local ] ; then
-cat > /etc/fail2ban/jail.local <<'EOF'
-[ssh-iptables]
-enabled  = true
-filter   = sshd
-action   = iptables[name=SSH, port=ssh, protocol=tcp]
-logpath  = /var/log/secure
-EOF
+  if [ "$use_nft" = "1" ]; then
+    for vport in 500 4500 1701; do
+        nft insert rule inet firewalld filter_INPUT udp dport "$vport" accept
+      done
+      for vnet in "$L2TP_NET" "$XAUTH_NET"; do
+        for vdir in saddr daddr; do
+          nft insert rule inet firewalld filter_FORWARD ip "$vdir" "$vnet" accept
+        done
+    done
+    echo "flush ruleset" >> "$IPT_FILE"
+    nft list ruleset >> "$IPT_FILE"
+  else
+    iptables -A FORWARD -j DROP
+    iptables-save >> "$IPT_FILE"
+  fi
 fi
 
 bigecho "Enabling services on boot..."
 
-if grep -qs "release 6" /etc/redhat-release; then
-  chkconfig iptables on
-  chkconfig fail2ban on
+systemctl --now mask firewalld 2>/dev/null
+if [ "$use_nft" = "1" ]; then
+  systemctl enable nftables fail2ban 2>/dev/null
 else
-  systemctl --now mask firewalld 2>/dev/null
   systemctl enable iptables fail2ban 2>/dev/null
 fi
 
@@ -417,7 +454,6 @@ cat >> /etc/rc.local <<'EOF'
 
 # Added by hwdsl2 VPN script
 (sleep 15
-modprobe -q pppol2tp
 service ipsec restart
 service xl2tpd restart
 echo 1 > /proc/sys/net/ipv4/ip_forward)&
@@ -426,32 +462,28 @@ fi
 
 bigecho "Starting services..."
 
-# Restore SELinux contexts
 restorecon /etc/ipsec.d/*db 2>/dev/null
 restorecon /usr/local/sbin -Rv 2>/dev/null
 restorecon /usr/local/libexec/ipsec -Rv 2>/dev/null
 
-# Reload sysctl.conf
 sysctl -e -q -p
 
-# Update file attributes
 chmod +x /etc/rc.local
 chmod 600 /etc/ipsec.secrets* /etc/ppp/chap-secrets* /etc/ipsec.d/passwd*
 
-# Apply new IPTables rules
-iptables-restore < "$IPT_FILE"
-
-# Fix xl2tpd on CentOS 7, if kernel module "l2tp_ppp" is unavailable
-if grep -qs "release 7" /etc/redhat-release; then
-  if ! modprobe -q l2tp_ppp; then
-    sed -i '/^ExecStartPre/s/^/#/' /usr/lib/systemd/system/xl2tpd.service
-    systemctl daemon-reload
-  fi
+if [ "$use_nft" = "1" ]; then
+  nft -f "$IPT_FILE"
+else
+  iptables-restore < "$IPT_FILE"
 fi
 
-# Restart services
+# Fix xl2tpd if l2tp_ppp is unavailable
+if ! modprobe -q l2tp_ppp; then
+  sed -i '/^ExecStartPre=\//s/=/=-/' /usr/lib/systemd/system/xl2tpd.service
+  systemctl daemon-reload
+fi
+
 mkdir -p /run/pluto
-modprobe -q pppol2tp
 service fail2ban restart 2>/dev/null
 service ipsec restart 2>/dev/null
 service xl2tpd restart 2>/dev/null
@@ -473,6 +505,7 @@ Write these down. You'll need them to connect!
 
 Important notes:   https://git.io/vpnnotes
 Setup VPN clients: https://git.io/vpnclients
+IKEv2 guide:       https://git.io/ikev2
 
 ================================================
 

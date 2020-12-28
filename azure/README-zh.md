@@ -6,11 +6,13 @@
 
 可根据偏好设置以下选项：
 
- - Username for VPN and SSH （用户名）
- - Password for VPN and SSH （密码）
+ - Username for VPN **and** SSH （用户名）
+ - Password for VPN **and** SSH （密码）
  - IPsec Pre-Shared Key for VPN （IPsec 预共享密钥）
- - Operating System Image （操作系统镜像，Debian 9 或 Ubuntu 16.04 LTS）
+ - Operating System Image （操作系统镜像，Ubuntu 20.04/18.04/16.04 或 Debian 9）
  - Virtual Machine Size （虚拟机大小，默认值： Standard_B1s）
+
+**注：** \*不要\* 在值中使用这些字符： `\ " '`
 
 请单击以下按钮开始：
 
@@ -18,12 +20,12 @@
     <img src="../docs/images/azure-deploy-button.png" alt="Deploy to Azure" />
 </a><br><br>
 
-在完成部署之后，Azure 会有提示。下一步： [配置 VPN 客户端](../docs/clients-zh.md)。
+在完成部署之后，Azure 会有提示。下一步：[配置 VPN 客户端](../README-zh.md#下一步)。
 
 ## 作者
 
 版权所有 (C) 2016 [Daniel Falkner](https://github.com/derdanu)   
-版权所有 (C) 2017-2019 Lin Song
+版权所有 (C) 2017-2020 Lin Song
 
 ## 屏幕截图
 

@@ -1,11 +1,11 @@
 #!/bin/sh
 #
-# Script to upgrade Libreswan on Ubuntu and Debian
+# Script to upgrade Libreswan on Amazon Linux 2
 #
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2016-2020 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2020 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -21,23 +21,15 @@ SWAN_VER=4.1
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 exiterr()  { echo "Error: $1" >&2; exit 1; }
-exiterr2() { exiterr "'apt-get install' failed."; }
+exiterr2() { exiterr "'yum install' failed."; }
 
 vpnupgrade() {
 
-os_type=$(lsb_release -si 2>/dev/null)
-if [ -z "$os_type" ]; then
-  [ -f /etc/os-release  ] && os_type=$(. /etc/os-release  && printf '%s' "$ID")
-  [ -f /etc/lsb-release ] && os_type=$(. /etc/lsb-release && printf '%s' "$DISTRIB_ID")
-fi
-if ! printf '%s' "$os_type" | head -n 1 | grep -qiF -e ubuntu -e debian -e raspbian; then
-  echo "Error: This script only supports Ubuntu and Debian." >&2
+if ! grep -qs "Amazon Linux release 2" /etc/system-release; then
+  echo "Error: This script only supports Amazon Linux 2." >&2
+  echo "For Ubuntu/Debian, use https://git.io/vpnupgrade" >&2
   echo "For CentOS/RHEL, use https://git.io/vpnupgrade-centos" >&2
   exit 1
-fi
-
-if [ -f /proc/user_beancounters ]; then
-  exiterr "OpenVZ VPS is not supported."
 fi
 
 if [ "$(id -u)" != 0 ]; then
@@ -108,16 +100,6 @@ NOTE: This script will make the following changes to your IPsec config:
 
 EOF
 
-debian_ver=$(sed 's/\..*//' /etc/debian_version)
-if [ "$debian_ver" = "8" ]; then
-cat <<'EOF'
-WARNING: Debian 8 (Jessie) has reached its end-of-life on June 30, 2020.
-    Users should upgrade to a newer Debian version.
-    See: https://www.debian.org/News/2020/20200709
-
-EOF
-fi
-
 case "$SWAN_VER" in
   3.2[679]|3.3[12])
 cat <<'EOF'
@@ -147,15 +129,14 @@ esac
 mkdir -p /opt/src
 cd /opt/src || exit 1
 
-# Update package index
-export DEBIAN_FRONTEND=noninteractive
-apt-get -yq update || exiterr "'apt-get update' failed."
+# Add the EPEL repository
+amazon-linux-extras install epel -y || exiterr2
 
 # Install necessary packages
-apt-get -yq install libnss3-dev libnspr4-dev pkg-config \
-  libpam0g-dev libcap-ng-dev libcap-ng-utils libselinux1-dev \
-  libcurl4-nss-dev libnss3-tools libevent-dev \
-  flex bison gcc make wget sed || exiterr2
+yum -y install nss-devel nspr-devel pkgconfig pam-devel \
+  libcap-ng-devel libselinux-devel curl-devel nss-tools \
+  flex bison gcc make wget sed tar \
+  systemd-devel libevent-devel fipscheck-devel || exiterr2
 
 # Compile and install Libreswan
 swan_file="libreswan-$SWAN_VER.tar.gz"
@@ -179,14 +160,6 @@ cat > Makefile.inc.local <<'EOF'
 WERROR_CFLAGS=-w
 USE_DNSSEC=false
 EOF
-if [ "$SWAN_VER" != "4.1" ] || [ "$debian_ver" = "8" ] || ! grep -qs 'VERSION_CODENAME=' /etc/os-release; then
-cat >> Makefile.inc.local <<'EOF'
-USE_DH31=false
-USE_NSS_AVA_COPY=true
-USE_NSS_IPSEC_PROFILE=false
-USE_GLIBC_KERN_FLIP_HEADERS=true
-EOF
-fi
 if [ "$SWAN_VER" = "3.31" ] || [ "$SWAN_VER" = "3.32" ] || [ "$SWAN_VER" = "4.1" ]; then
   echo "USE_DH2=true" >> Makefile.inc.local
   if ! grep -qs IFLA_XFRM_LINK /usr/include/linux/if_link.h; then
@@ -196,9 +169,6 @@ fi
 if [ "$SWAN_VER" = "4.1" ]; then
   echo "USE_NSS_KDF=false" >> Makefile.inc.local
   echo "FINALNSSDIR=/etc/ipsec.d" >> Makefile.inc.local
-fi
-if [ "$(packaging/utils/lswan_detect.sh init)" = "systemd" ]; then
-  apt-get -yq install libsystemd-dev || exiterr2
 fi
 NPROCS=$(grep -c ^processor /proc/cpuinfo)
 [ -z "$NPROCS" ] && NPROCS=1
@@ -211,15 +181,14 @@ if ! /usr/local/sbin/ipsec --version 2>/dev/null | grep -qF "$SWAN_VER"; then
   exiterr "Libreswan $SWAN_VER failed to build."
 fi
 
+# Restore SELinux contexts
+restorecon /etc/ipsec.d/*db 2>/dev/null
+restorecon /usr/local/sbin -Rv 2>/dev/null
+restorecon /usr/local/libexec/ipsec -Rv 2>/dev/null
+
 # Update IPsec config
 IKE_NEW="  ike=aes256-sha2,aes128-sha2,aes256-sha1,aes128-sha1,aes256-sha2;modp1024,aes128-sha1;modp1024"
 PHASE2_NEW="  phase2alg=aes_gcm-null,aes128-sha1,aes256-sha1,aes256-sha2_512,aes128-sha2,aes256-sha2"
-
-if uname -m | grep -qi '^arm'; then
-  if ! modprobe -q sha512; then
-    PHASE2_NEW="  phase2alg=aes_gcm-null,aes128-sha1,aes256-sha1,aes128-sha2,aes256-sha2"
-  fi
-fi
 
 dns_state=0
 DNS_SRV1=$(grep "modecfgdns1=" /etc/ipsec.conf | head -n 1 | cut -d '=' -f 2)

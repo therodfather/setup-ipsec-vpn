@@ -1,15 +1,13 @@
 #!/bin/sh
 #
-# Script for automatic setup of an IPsec VPN server on Ubuntu and Debian.
-# Works on any dedicated server or virtual private server (VPS) except OpenVZ.
+# Script for automatic setup of an IPsec VPN server on Amazon Linux 2.
 #
 # DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
 #
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2014-2020 Lin Song <linsongui@gmail.com>
-# Based on the work of Thomas Sarlandie (Copyright 2012)
+# Copyright (C) 2020 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -38,7 +36,7 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 SYS_DT=$(date +%F-%T | tr ':' '_')
 
 exiterr()  { echo "Error: $1" >&2; exit 1; }
-exiterr2() { exiterr "'apt-get install' failed."; }
+exiterr2() { exiterr "'yum install' failed."; }
 conf_bk() { /bin/cp -f "$1" "$1.old-$SYS_DT" 2>/dev/null; }
 bigecho() { echo; echo "## $1"; echo; }
 
@@ -49,27 +47,11 @@ check_ip() {
 
 vpnsetup() {
 
-os_type=$(lsb_release -si 2>/dev/null)
-if [ -z "$os_type" ]; then
-  [ -f /etc/os-release  ] && os_type=$(. /etc/os-release  && printf '%s' "$ID")
-  [ -f /etc/lsb-release ] && os_type=$(. /etc/lsb-release && printf '%s' "$DISTRIB_ID")
-fi
-if ! printf '%s' "$os_type" | head -n 1 | grep -qiF -e ubuntu -e debian -e raspbian; then
-  echo "Error: This script only supports Ubuntu and Debian." >&2
+if ! grep -qs "Amazon Linux release 2" /etc/system-release; then
+  echo "Error: This script only supports Amazon Linux 2." >&2
+  echo "For Ubuntu/Debian, use https://git.io/vpnsetup" >&2
   echo "For CentOS/RHEL, use https://git.io/vpnsetup-centos" >&2
   exit 1
-fi
-
-debian_ver=$(sed 's/\..*//' /etc/debian_version)
-if [ "$debian_ver" = "8" ]; then
-  exiterr "Debian 8 is not supported."
-fi
-if [ "$debian_ver" = "10" ] && [ ! -e /dev/ppp ]; then
-  exiterr "/dev/ppp is missing. Debian 10 users, see: https://git.io/vpndebian10"
-fi
-
-if [ -f /proc/user_beancounters ]; then
-  exiterr "OpenVZ VPS is not supported. Try OpenVPN: github.com/Nyr/openvpn-install"
 fi
 
 if [ "$(id -u)" != 0 ]; then
@@ -80,13 +62,11 @@ def_iface=$(route 2>/dev/null | grep -m 1 '^default' | grep -o '[^ ]*$')
 [ -z "$def_iface" ] && def_iface=$(ip -4 route list 0/0 2>/dev/null | grep -m 1 -Po '(?<=dev )(\S+)')
 def_state=$(cat "/sys/class/net/$def_iface/operstate" 2>/dev/null)
 if [ -n "$def_state" ] && [ "$def_state" != "down" ]; then
-  if ! uname -m | grep -qi -e '^arm' -e '^aarch64'; then
-    case "$def_iface" in
-      wl*)
-        exiterr "Wireless interface '$def_iface' detected. DO NOT run this script on your PC or Mac!"
-        ;;
-    esac
-  fi
+  case "$def_iface" in
+    wl*)
+      exiterr "Wireless interface '$def_iface' detected. DO NOT run this script on your PC or Mac!"
+      ;;
+  esac
   NET_IFACE="$def_iface"
 else
   eth0_state=$(cat "/sys/class/net/eth0/operstate" 2>/dev/null)
@@ -126,37 +106,16 @@ if { [ -n "$VPN_DNS_SRV1" ] && ! check_ip "$VPN_DNS_SRV1"; } \
   exiterr "The DNS server specified is invalid."
 fi
 
-if [ -x /sbin/iptables ] && ! iptables -nL INPUT >/dev/null 2>&1; then
-  exiterr "IPTables check failed. Reboot and re-run this script."
-fi
-
 bigecho "VPN setup in progress... Please be patient."
 
 # Create and change to working dir
 mkdir -p /opt/src
 cd /opt/src || exit 1
 
-count=0
-APT_LK=/var/lib/apt/lists/lock
-PKG_LK=/var/lib/dpkg/lock
-while fuser "$APT_LK" "$PKG_LK" >/dev/null 2>&1 \
-  || lsof "$APT_LK" >/dev/null 2>&1 || lsof "$PKG_LK" >/dev/null 2>&1; do
-  [ "$count" = "0" ] && bigecho "Waiting for apt to be available..."
-  [ "$count" -ge "60" ] && exiterr "Could not get apt/dpkg lock."
-  count=$((count+1))
-  printf '%s' '.'
-  sleep 3
-done
-
-bigecho "Populating apt-get cache..."
-
-export DEBIAN_FRONTEND=noninteractive
-apt-get -yq update || exiterr "'apt-get update' failed."
-
 bigecho "Installing packages required for setup..."
 
-apt-get -yq install wget dnsutils openssl \
-  iptables iproute2 gawk grep sed net-tools || exiterr2
+yum -y install wget bind-utils openssl tar \
+  iptables iproute gawk grep sed net-tools || exiterr2
 
 bigecho "Trying to auto discover IP of this server..."
 
@@ -173,16 +132,25 @@ PUBLIC_IP=${VPN_PUBLIC_IP:-''}
 check_ip "$PUBLIC_IP" || PUBLIC_IP=$(wget -t 3 -T 15 -qO- http://ipv4.icanhazip.com)
 check_ip "$PUBLIC_IP" || exiterr "Cannot detect this server's public IP. Edit the script and manually enter it."
 
+bigecho "Adding the EPEL repository..."
+
+amazon-linux-extras install epel -y || exiterr2
+
 bigecho "Installing packages required for the VPN..."
 
-apt-get -yq install libnss3-dev libnspr4-dev pkg-config \
-  libpam0g-dev libcap-ng-dev libcap-ng-utils libselinux1-dev \
-  libcurl4-nss-dev flex bison gcc make libnss3-tools \
-  libevent-dev ppp xl2tpd || exiterr2
+REPO1='--enablerepo=epel'
+
+yum -y install nss-devel nspr-devel pkgconfig pam-devel \
+  libcap-ng-devel libselinux-devel curl-devel nss-tools \
+  flex bison gcc make ppp \
+  systemd-devel iptables-services \
+  libevent-devel fipscheck-devel || exiterr2
+
+yum "$REPO1" -y install xl2tpd || exiterr2
 
 bigecho "Installing Fail2Ban to protect SSH..."
 
-apt-get -yq install fail2ban || exiterr2
+yum "$REPO1" -y install fail2ban || exiterr2
 
 bigecho "Compiling and installing Libreswan..."
 
@@ -204,19 +172,8 @@ USE_DH2=true
 USE_NSS_KDF=false
 FINALNSSDIR=/etc/ipsec.d
 EOF
-if ! grep -qs 'VERSION_CODENAME=' /etc/os-release; then
-cat >> Makefile.inc.local <<'EOF'
-USE_DH31=false
-USE_NSS_AVA_COPY=true
-USE_NSS_IPSEC_PROFILE=false
-USE_GLIBC_KERN_FLIP_HEADERS=true
-EOF
-fi
 if ! grep -qs IFLA_XFRM_LINK /usr/include/linux/if_link.h; then
   echo "USE_XFRM_INTERFACE_IFLA_HEADER=true" >> Makefile.inc.local
-fi
-if [ "$(packaging/utils/lswan_detect.sh init)" = "systemd" ]; then
-  apt-get -yq install libsystemd-dev || exiterr2
 fi
 NPROCS=$(grep -c ^processor /proc/cpuinfo)
 [ -z "$NPROCS" ] && NPROCS=1
@@ -293,12 +250,6 @@ conn xauth-psk
 
 include /etc/ipsec.d/*.conf
 EOF
-
-if uname -m | grep -qi '^arm'; then
-  if ! modprobe -q sha512; then
-    sed -i '/phase2alg/s/,aes256-sha2_512//' /etc/ipsec.conf
-  fi
-fi
 
 # Specify IPsec PSK
 conf_bk "/etc/ipsec.secrets"
@@ -385,10 +336,21 @@ net.ipv4.tcp_wmem = 10240 87380 12582912
 EOF
 fi
 
+F2B_FILE=/etc/fail2ban/jail.local
+if [ ! -f "$F2B_FILE" ]; then
+  bigecho "Creating basic Fail2Ban rules..."
+cat > "$F2B_FILE" <<'EOF'
+[ssh-iptables]
+enabled = true
+filter = sshd
+logpath = /var/log/secure
+action = iptables[name=SSH, port=ssh, protocol=tcp]
+EOF
+fi
+
 bigecho "Updating IPTables rules..."
 
-IPT_FILE=/etc/iptables.rules
-IPT_FILE2=/etc/iptables/rules.v4
+IPT_FILE=/etc/sysconfig/iptables
 ipt_flag=0
 if ! grep -qs "hwdsl2 VPN script" "$IPT_FILE"; then
   ipt_flag=1
@@ -412,69 +374,21 @@ if [ "$ipt_flag" = "1" ]; then
   # Uncomment to disallow traffic between VPN clients
   # iptables -I FORWARD 2 -i ppp+ -o ppp+ -s "$L2TP_NET" -d "$L2TP_NET" -j DROP
   # iptables -I FORWARD 3 -s "$XAUTH_NET" -d "$XAUTH_NET" -j DROP
-  iptables -A FORWARD -j DROP
   iptables -t nat -I POSTROUTING -s "$XAUTH_NET" -o "$NET_IFACE" -m policy --dir out --pol none -j MASQUERADE
   iptables -t nat -I POSTROUTING -s "$L2TP_NET" -o "$NET_IFACE" -j MASQUERADE
   echo "# Modified by hwdsl2 VPN script" > "$IPT_FILE"
+  iptables -A FORWARD -j DROP
   iptables-save >> "$IPT_FILE"
-
-  if [ -f "$IPT_FILE2" ]; then
-    conf_bk "$IPT_FILE2"
-    /bin/cp -f "$IPT_FILE" "$IPT_FILE2"
-  fi
 fi
 
 bigecho "Enabling services on boot..."
 
-IPT_PST=/etc/init.d/iptables-persistent
-IPT_PST2=/usr/share/netfilter-persistent/plugins.d/15-ip4tables
-ipt_load=1
-if [ -f "$IPT_FILE2" ] && { [ -f "$IPT_PST" ] || [ -f "$IPT_PST2" ]; }; then
-  ipt_load=0
-fi
-
-if [ "$ipt_load" = "1" ]; then
-  mkdir -p /etc/network/if-pre-up.d
-cat > /etc/network/if-pre-up.d/iptablesload <<'EOF'
-#!/bin/sh
-iptables-restore < /etc/iptables.rules
-exit 0
-EOF
-  chmod +x /etc/network/if-pre-up.d/iptablesload
-
-  if [ -f /usr/sbin/netplan ]; then
-    mkdir -p /etc/systemd/system
-cat > /etc/systemd/system/load-iptables-rules.service <<'EOF'
-[Unit]
-Description = Load /etc/iptables.rules
-DefaultDependencies=no
-
-Before=network-pre.target
-Wants=network-pre.target
-
-Wants=systemd-modules-load.service local-fs.target
-After=systemd-modules-load.service local-fs.target
-
-[Service]
-Type=oneshot
-ExecStart=/etc/network/if-pre-up.d/iptablesload
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    systemctl enable load-iptables-rules 2>/dev/null
-  fi
-fi
-
-for svc in fail2ban ipsec xl2tpd; do
-  update-rc.d "$svc" enable >/dev/null 2>&1
-  systemctl enable "$svc" 2>/dev/null
-done
+systemctl --now mask firewalld 2>/dev/null
+systemctl enable iptables fail2ban 2>/dev/null
 
 if ! grep -qs "hwdsl2 VPN script" /etc/rc.local; then
   if [ -f /etc/rc.local ]; then
     conf_bk "/etc/rc.local"
-    sed --follow-symlinks -i '/^exit 0/d' /etc/rc.local
   else
     echo '#!/bin/sh' > /etc/rc.local
   fi
@@ -485,16 +399,27 @@ cat >> /etc/rc.local <<'EOF'
 service ipsec restart
 service xl2tpd restart
 echo 1 > /proc/sys/net/ipv4/ip_forward)&
-exit 0
 EOF
 fi
 
 bigecho "Starting services..."
 
+restorecon /etc/ipsec.d/*db 2>/dev/null
+restorecon /usr/local/sbin -Rv 2>/dev/null
+restorecon /usr/local/libexec/ipsec -Rv 2>/dev/null
+
 sysctl -e -q -p
 
 chmod +x /etc/rc.local
 chmod 600 /etc/ipsec.secrets* /etc/ppp/chap-secrets* /etc/ipsec.d/passwd*
+
+iptables-restore < "$IPT_FILE"
+
+# Fix xl2tpd if l2tp_ppp is unavailable
+if ! modprobe -q l2tp_ppp; then
+  sed -i '/^ExecStartPre=\//s/=/=-/' /usr/lib/systemd/system/xl2tpd.service
+  systemctl daemon-reload
+fi
 
 mkdir -p /run/pluto
 service fail2ban restart 2>/dev/null

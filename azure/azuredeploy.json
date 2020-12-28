@@ -24,18 +24,21 @@
     "image": {
       "type": "string",
       "allowedValues": [
-        "ubuntu1604",
+        "ubuntu20.04",
+        "ubuntu18.04",
+        "ubuntu16.04",
         "debian9"
       ],
-      "defaultValue": "debian9",
+      "defaultValue": "ubuntu20.04",
       "metadata": {
-        "description": "OS to use. Debian 9 or Ubuntu 16.04 LTS"
+        "description": "OS to use. Ubuntu 20.04/18.04/16.04 or Debian 9."
       }
     },
     "VMSize": {
       "type": "string",
       "defaultValue": "Standard_B1s",
       "allowedValues": [
+        "Standard_B1ls",
         "Standard_B1s",
         "Standard_B1ms",
         "Standard_B2s",
@@ -47,6 +50,7 @@
     }
   },
   "variables": {
+    "quote": "'",
     "location": "[resourceGroup().location]",
     "vmName": "vpnserver",
     "virtualNetworkName": "vpnVnet",
@@ -58,7 +62,19 @@
     "vhdStorageType": "Standard_LRS",
     "vnetId": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
     "SubnetRef": "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]",
-    "ubuntu1604": {
+    "ubuntu20.04": {
+      "publisher": "Canonical",
+      "offer": "0001-com-ubuntu-server-focal",
+      "sku": "20_04-lts",
+      "version": "latest"
+    },
+    "ubuntu18.04": {
+      "publisher": "Canonical",
+      "offer": "UbuntuServer",
+      "sku": "18.04-LTS",
+      "version": "latest"
+    },
+    "ubuntu16.04": {
       "publisher": "Canonical",
       "offer": "UbuntuServer",
       "sku": "16.04-LTS",
@@ -71,7 +87,7 @@
       "version": "latest"
     },
     "installScriptURL": "https://raw.githubusercontent.com/hwdsl2/setup-ipsec-vpn/master/azure/install.sh",
-    "installCommand": "[concat('sh install.sh ', parameters('preSharedKey'), ' ', parameters('username'), ' ', parameters('password'))]"
+    "installCommand": "[concat('sh install.sh ', variables('quote'), parameters('preSharedKey'), variables('quote'), ' ', variables('quote'), parameters('username'), variables('quote'), ' ', variables('quote'), parameters('password'), variables('quote'))]"
   },
   "resources": [
     {

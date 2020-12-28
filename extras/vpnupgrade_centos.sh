@@ -2,7 +2,10 @@
 #
 # Script to upgrade Libreswan on CentOS and RHEL
 #
-# Copyright (C) 2016-2019 Lin Song <linsongui@gmail.com>
+# The latest version of this script is available at:
+# https://github.com/hwdsl2/setup-ipsec-vpn
+#
+# Copyright (C) 2016-2020 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -11,7 +14,7 @@
 # know how you have improved it!
 
 # Specify which Libreswan version to install. See: https://libreswan.org
-SWAN_VER=3.29
+SWAN_VER=4.1
 
 ### DO NOT edit below this line ###
 
@@ -22,8 +25,10 @@ exiterr2() { exiterr "'yum install' failed."; }
 
 vpnupgrade() {
 
-if ! grep -qs -e "release 6" -e "release 7" /etc/redhat-release; then
-  exiterr "This script only supports CentOS/RHEL 6 and 7."
+if ! grep -qs -e "release 7" -e "release 8" /etc/redhat-release; then
+  echo "Error: This script only supports CentOS/RHEL 7 and 8." >&2
+  echo "For Ubuntu/Debian, use https://git.io/vpnupgrade" >&2
+  exit 1
 fi
 
 if [ -f /proc/user_beancounters ]; then
@@ -35,57 +40,42 @@ if [ "$(id -u)" != 0 ]; then
 fi
 
 case "$SWAN_VER" in
-  3.19|3.2[01235679])
+  3.2[679]|3.3[12]|4.1)
     /bin/true
     ;;
   *)
 cat 1>&2 <<EOF
 Error: Libreswan version '$SWAN_VER' is not supported.
   This script can install one of the following versions:
-  3.19-3.23, 3.25-3.27 and 3.29
+  3.26-3.27, 3.29, 3.31-3.32 or 4.1
 EOF
     exit 1
     ;;
 esac
 
-dns_state=0
-case "$SWAN_VER" in
-  3.2[35679])
-    DNS_SRV1=$(grep "modecfgdns1=" /etc/ipsec.conf | head -n 1 | cut -d '=' -f 2)
-    DNS_SRV2=$(grep "modecfgdns2=" /etc/ipsec.conf | head -n 1 | cut -d '=' -f 2)
-    [ -n "$DNS_SRV1" ] && dns_state=2
-    [ -n "$DNS_SRV1" ] && [ -n "$DNS_SRV2" ] && dns_state=1
-    [ "$(grep -c "modecfgdns1=" /etc/ipsec.conf)" -gt "1" ] && dns_state=5
-    ;;
-  3.19|3.2[012])
-    DNS_SRVS=$(grep "modecfgdns=" /etc/ipsec.conf | head -n 1 | cut -d '=' -f 2)
-    DNS_SRVS=$(printf '%s' "$DNS_SRVS" | cut -d '"' -f 2 | cut -d "'" -f 2 | sed 's/,/ /g' | tr -s ' ')
-    DNS_SRV1=$(printf '%s' "$DNS_SRVS" | cut -d ' ' -f 1)
-    DNS_SRV2=$(printf '%s' "$DNS_SRVS" | cut -s -d ' ' -f 2)
-    [ -n "$DNS_SRV1" ] && dns_state=4
-    [ -n "$DNS_SRV1" ] && [ -n "$DNS_SRV2" ] && dns_state=3
-    [ "$(grep -c "modecfgdns=" /etc/ipsec.conf)" -gt "1" ] && dns_state=6
-    ;;
-esac
-
 ipsec_ver=$(/usr/local/sbin/ipsec --version 2>/dev/null)
 ipsec_ver_short=$(printf '%s' "$ipsec_ver" | sed -e 's/Linux Libreswan/Libreswan/' -e 's/ (netkey) on .*//')
+swan_ver_old=$(printf '%s' "$ipsec_ver_short" | sed -e 's/Libreswan //')
 if ! printf '%s' "$ipsec_ver" | grep -q "Libreswan"; then
-  exiterr "This script requires Libreswan already installed."
+cat 1>&2 <<'EOF'
+Error: This script requires Libreswan already installed.
+  See: https://github.com/hwdsl2/setup-ipsec-vpn
+EOF
+  exit 1
 fi
 
-if printf '%s' "$ipsec_ver" | grep -qF "$SWAN_VER"; then
+if [ "$swan_ver_old" = "$SWAN_VER" ]; then
   echo "You already have Libreswan version $SWAN_VER installed! "
   echo "If you continue, the same version will be re-installed."
   echo
-  printf "Do you wish to continue anyway? [y/N] "
+  printf "Do you want to continue anyway? [y/N] "
   read -r response
   case $response in
     [yY][eE][sS]|[yY])
       echo
       ;;
     *)
-      echo "Aborting."
+      echo "Abort. No changes were made."
       exit 1
       ;;
   esac
@@ -104,51 +94,27 @@ Version to install: Libreswan $SWAN_VER
 
 EOF
 
-case "$SWAN_VER" in
-  3.2[35])
 cat <<'EOF'
-WARNING: Libreswan 3.23 and 3.25 have an issue with connecting multiple
-    IPsec/XAuth VPN clients from behind the same NAT (e.g. home router).
-    DO NOT upgrade to 3.23/3.25 if your use cases include the above.
-
-EOF
-    ;;
-esac
-
-cat <<'EOF'
-NOTE: Libreswan versions 3.19 and newer require some configuration changes.
-    This script will make the following updates to your /etc/ipsec.conf:
-
-    - Replace "auth=esp" with "phase2=esp"
-    - Replace "forceencaps=yes" with "encapsulation=yes"
-    - Optimize VPN ciphers for "ike=" and "phase2alg="
-EOF
-
-if [ "$dns_state" = "1" ] || [ "$dns_state" = "2" ]; then
-cat <<'EOF'
-    - Replace "modecfgdns1" and "modecfgdns2" with "modecfgdns"
-EOF
-fi
-
-if [ "$dns_state" = "3" ] || [ "$dns_state" = "4" ]; then
-cat <<'EOF'
-    - Replace "modecfgdns" with "modecfgdns1" and "modecfgdns2"
-EOF
-fi
-
-if [ "$SWAN_VER" = "3.29" ]; then
-cat <<'EOF'
-    - Move "ikev2=never" to section "conn shared"
-EOF
-fi
-
-cat <<'EOF'
+NOTE: This script will make the following changes to your IPsec config:
+    - Fix obsolete ipsec.conf and/or ikev2.conf options
+    - Optimize VPN ciphers
 
     Your other VPN configuration files will not be modified.
 
 EOF
 
-printf "Do you wish to continue? [y/N] "
+case "$SWAN_VER" in
+  3.2[679]|3.3[12])
+cat <<'EOF'
+WARNING: Older versions of Libreswan could contain known security vulnerabilities.
+    See https://libreswan.org/security/ for more information.
+    Are you sure you want to install an older version?
+
+EOF
+    ;;
+esac
+
+printf "Do you want to continue? [y/N] "
 read -r response
 case $response in
   [yY][eE][sS]|[yY])
@@ -157,7 +123,7 @@ case $response in
     echo
     ;;
   *)
-    echo "Aborting."
+    echo "Abort. No changes were made."
     exit 1
     ;;
 esac
@@ -172,17 +138,21 @@ yum -y install epel-release || yum -y install "$epel_url" || exiterr2
 
 # Install necessary packages
 yum -y install nss-devel nspr-devel pkgconfig pam-devel \
-  libcap-ng-devel libselinux-devel curl-devel \
-  flex bison gcc make wget sed || exiterr2
+  libcap-ng-devel libselinux-devel curl-devel nss-tools \
+  flex bison gcc make wget sed tar || exiterr2
 
-REPO1='--enablerepo=*server-optional*'
+REPO1='--enablerepo=*server-*optional*'
 REPO2='--enablerepo=*releases-optional*'
-if grep -qs "release 6" /etc/redhat-release; then
-  yum -y remove libevent-devel
-  yum "$REPO1" "$REPO2" -y install libevent2-devel fipscheck-devel || exiterr2
-else
+REPO3='--enablerepo=[Pp]ower[Tt]ools'
+
+if grep -qs "release 7" /etc/redhat-release; then
   yum -y install systemd-devel || exiterr2
   yum "$REPO1" "$REPO2" -y install libevent-devel fipscheck-devel || exiterr2
+else
+  if grep -qs "Red Hat" /etc/redhat-release; then
+    REPO3='--enablerepo=codeready-builder-for-rhel-8-*'
+  fi
+  yum "$REPO3" -y install systemd-devel libevent-devel fipscheck-devel || exiterr2
 fi
 
 # Compile and install Libreswan
@@ -195,18 +165,28 @@ fi
 /bin/rm -rf "/opt/src/libreswan-$SWAN_VER"
 tar xzf "$swan_file" && /bin/rm -f "$swan_file"
 cd "libreswan-$SWAN_VER" || exit 1
-[ "$SWAN_VER" = "3.22" ] && sed -i '/^#define LSWBUF_CANARY/s/-2$/((char) -2)/' include/lswlog.h
-[ "$SWAN_VER" = "3.23" ] || [ "$SWAN_VER" = "3.25" ] && sed -i '/docker-targets\.mk/d' Makefile
 [ "$SWAN_VER" = "3.26" ] && sed -i 's/-lfreebl //' mk/config.mk
 [ "$SWAN_VER" = "3.26" ] && sed -i '/blapi\.h/d' programs/pluto/keys.c
+if [ "$SWAN_VER" = "3.31" ]; then
+  sed -i '916iif (!st->st_seen_fragvid) { return FALSE; }' programs/pluto/ikev2.c
+  sed -i '1033s/if (/if (LIN(POLICY_IKE_FRAG_ALLOW, sk->ike->sa.st_connection->policy) \&\& sk->ike->sa.st_seen_fragvid \&\& /' \
+    programs/pluto/ikev2_message.c
+fi
+[ "$SWAN_VER" = "4.1" ] && sed -i 's/ sysv )/ sysvinit )/' programs/setup/setup.in
 cat > Makefile.inc.local <<'EOF'
-WERROR_CFLAGS =
-USE_DNSSEC = false
-USE_DH31 = false
-USE_NSS_AVA_COPY = true
-USE_NSS_IPSEC_PROFILE = false
-USE_GLIBC_KERN_FLIP_HEADERS = true
+WERROR_CFLAGS=-w
+USE_DNSSEC=false
 EOF
+if [ "$SWAN_VER" = "3.31" ] || [ "$SWAN_VER" = "3.32" ] || [ "$SWAN_VER" = "4.1" ]; then
+  echo "USE_DH2=true" >> Makefile.inc.local
+  if ! grep -qs IFLA_XFRM_LINK /usr/include/linux/if_link.h; then
+    echo "USE_XFRM_INTERFACE_IFLA_HEADER=true" >> Makefile.inc.local
+  fi
+fi
+if [ "$SWAN_VER" = "4.1" ]; then
+  echo "USE_NSS_KDF=false" >> Makefile.inc.local
+  echo "FINALNSSDIR=/etc/ipsec.d" >> Makefile.inc.local
+fi
 NPROCS=$(grep -c ^processor /proc/cpuinfo)
 [ -z "$NPROCS" ] && NPROCS=1
 make "-j$((NPROCS+1))" -s base && make -s install-base
@@ -223,31 +203,42 @@ restorecon /etc/ipsec.d/*db 2>/dev/null
 restorecon /usr/local/sbin -Rv 2>/dev/null
 restorecon /usr/local/libexec/ipsec -Rv 2>/dev/null
 
-# Update ipsec.conf
+# Update IPsec config
 IKE_NEW="  ike=aes256-sha2,aes128-sha2,aes256-sha1,aes128-sha1,aes256-sha2;modp1024,aes128-sha1;modp1024"
 PHASE2_NEW="  phase2alg=aes_gcm-null,aes128-sha1,aes256-sha1,aes256-sha2_512,aes128-sha2,aes256-sha2"
 
+dns_state=0
+DNS_SRV1=$(grep "modecfgdns1=" /etc/ipsec.conf | head -n 1 | cut -d '=' -f 2)
+DNS_SRV2=$(grep "modecfgdns2=" /etc/ipsec.conf | head -n 1 | cut -d '=' -f 2)
+[ -n "$DNS_SRV1" ] && dns_state=2
+[ -n "$DNS_SRV1" ] && [ -n "$DNS_SRV2" ] && dns_state=1
+[ "$(grep -c "modecfgdns1=" /etc/ipsec.conf)" -gt "1" ] && dns_state=3
+
 sed -i".old-$(date +%F-%T)" \
-    -e "s/^[[:space:]]\+auth=esp\$/  phase2=esp/g" \
-    -e "s/^[[:space:]]\+forceencaps=yes\$/  encapsulation=yes/g" \
-    -e "s/^[[:space:]]\+ike=.\+\$/$IKE_NEW/g" \
-    -e "s/^[[:space:]]\+phase2alg=.\+\$/$PHASE2_NEW/g" /etc/ipsec.conf
+    -e "s/^[[:space:]]\+auth=/  phase2=/" \
+    -e "s/^[[:space:]]\+forceencaps=/  encapsulation=/" \
+    -e "s/^[[:space:]]\+ike-frag=/  fragmentation=/" \
+    -e "s/^[[:space:]]\+sha2_truncbug=/  sha2-truncbug=/" \
+    -e "s/^[[:space:]]\+sha2-truncbug=yes/  sha2-truncbug=no/" \
+    -e "s/^[[:space:]]\+ike=.\+/$IKE_NEW/" \
+    -e "s/^[[:space:]]\+phase2alg=.\+/$PHASE2_NEW/" /etc/ipsec.conf
 
 if [ "$dns_state" = "1" ]; then
-  sed -i -e "s/modecfgdns1=.*/modecfgdns=\"$DNS_SRV1 $DNS_SRV2\"/" \
-      -e "/modecfgdns2/d" /etc/ipsec.conf
+  sed -i -e "s/^[[:space:]]\+modecfgdns1=.\+/  modecfgdns=\"$DNS_SRV1 $DNS_SRV2\"/" \
+      -e "/modecfgdns2=/d" /etc/ipsec.conf
 elif [ "$dns_state" = "2" ]; then
-  sed -i "s/modecfgdns1=.*/modecfgdns=$DNS_SRV1/" /etc/ipsec.conf
-elif [ "$dns_state" = "3" ]; then
-  sed -i "/modecfgdns=/a \  modecfgdns2=$DNS_SRV2" /etc/ipsec.conf
-  sed -i "s/modecfgdns=.*/modecfgdns1=$DNS_SRV1/" /etc/ipsec.conf
-elif [ "$dns_state" = "4" ]; then
-  sed -i "s/modecfgdns=.*/modecfgdns1=$DNS_SRV1/" /etc/ipsec.conf
+  sed -i "s/^[[:space:]]\+modecfgdns1=.\+/  modecfgdns=$DNS_SRV1/" /etc/ipsec.conf
 fi
 
-if [ "$SWAN_VER" = "3.29" ]; then
-  sed -i "/ikev2=never/d" /etc/ipsec.conf
-  sed -i "/dpdaction=clear/a \  ikev2=never" /etc/ipsec.conf
+case "$SWAN_VER" in
+  3.29|3.3[12]|4.1)
+    sed -i "/ikev2=never/d" /etc/ipsec.conf
+    sed -i "/conn shared/a \  ikev2=never" /etc/ipsec.conf
+    ;;
+esac
+
+if grep -qs ike-frag /etc/ipsec.d/ikev2.conf; then
+  sed -i 's/^[[:space:]]\+ike-frag=/  fragmentation=/' /etc/ipsec.d/ikev2.conf
 fi
 
 # Restart IPsec service
@@ -257,40 +248,23 @@ service ipsec restart
 cat <<EOF
 
 
-===================================================
+================================================
 
 Libreswan $SWAN_VER has been successfully installed!
 
-===================================================
+================================================
 
 EOF
 
-if [ "$dns_state" = "5" ]; then
+if [ "$dns_state" = "3" ]; then
 cat <<'EOF'
 IMPORTANT: Users upgrading to Libreswan 3.23 or newer must edit /etc/ipsec.conf
     and replace all occurrences of these two lines:
-
       modecfgdns1=DNS_SERVER_1
       modecfgdns2=DNS_SERVER_2
 
     with a single line like this:
-
       modecfgdns="DNS_SERVER_1 DNS_SERVER_2"
-
-    Then run "sudo service ipsec restart".
-
-EOF
-elif [ "$dns_state" = "6" ]; then
-cat <<'EOF'
-IMPORTANT: Users downgrading to Libreswan 3.22 or older must edit /etc/ipsec.conf
-    and replace all occurrences of this line:
-
-      modecfgdns="DNS_SERVER_1 DNS_SERVER_2"
-
-    with two lines like this:
-
-      modecfgdns1=DNS_SERVER_1
-      modecfgdns2=DNS_SERVER_2
 
     Then run "sudo service ipsec restart".
 

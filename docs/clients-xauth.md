@@ -65,7 +65,7 @@ If you get an error when trying to connect, see <a href="clients.md#troubleshoot
 ## Android
 
 1. Launch the **Settings** application.
-1. Tap **More...** in the **Wireless & Networks** section.
+1. Tap "Network & internet". Or, if using Android 7 or earlier, tap **More...** in the **Wireless & networks** section.
 1. Tap **VPN**.
 1. Tap **Add VPN Profile** or the **+** icon at top-right of screen.
 1. Enter anything you like in the **Name** field.
@@ -106,7 +106,7 @@ If you get an error when trying to connect, see <a href="clients.md#troubleshoot
 
 ### Fedora and CentOS
 
-Fedora 28 (and newer) and CentOS 7 users can install the <a href="https://apps.fedoraproject.org/packages/s/libreswan" target="_blank">NetworkManager-libreswan-gnome</a> package, then configure the IPsec/XAuth VPN client using the GUI.
+Fedora 28 (and newer) and CentOS 8/7 users can install the `NetworkManager-libreswan-gnome` package using `yum`, then configure the IPsec/XAuth VPN client using the GUI.
 
 1. Go to Settings -> Network -> VPN. Click the **+** button.
 1. Select **IPsec based VPN**.
@@ -137,7 +137,7 @@ This document was adapted from the <a href="https://github.com/StreisandEffect/s
 
 Note: This license applies to this document only.
 
-Copyright (C) 2016-2019 Lin Song   
+Copyright (C) 2016-2020 Lin Song   
 Based on <a href="https://github.com/StreisandEffect/streisand/blob/6aa6b6b2735dd829ca8c417d72eb2768a89b6639/playbooks/roles/l2tp-ipsec/templates/instructions.md.j2" target="_blank">the work of Joshua Lund</a> (Copyright 2014-2016)
 
 This program is free software: you can redistribute it and/or modify it under the terms of the <a href="https://www.gnu.org/licenses/gpl.html" target="_blank">GNU General Public License</a> as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.

@@ -2,7 +2,7 @@
 #
 # Script to delete an VPN user for both IPsec/L2TP and Cisco IPsec
 #
-# Copyright (C) 2018-2019 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2018-2020 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -11,7 +11,7 @@
 # know how you have improved it!
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-SYS_DT=$(date +%F-%T)
+SYS_DT=$(date +%F-%T | tr ':' '_')
 
 exiterr()  { echo "Error: $1" >&2; exit 1; }
 conf_bk() { /bin/cp -f "$1" "$1.old-$SYS_DT" 2>/dev/null; }
@@ -63,7 +63,6 @@ if [ "$(grep -c "^\"$VPN_USER\" " /etc/ppp/chap-secrets)" = "0" ] \
 cat 1>&2 <<'EOF'
 Error: The specified VPN user does not exist in /etc/ppp/chap-secrets
        and/or /etc/ipsec.d/passwd.
-       Aborting. No changes were made.
 EOF
   exit 1
 fi
@@ -73,7 +72,6 @@ if [ "$(grep -c -v -e '^#' -e '^[[:space:]]*$' /etc/ppp/chap-secrets)" = "1" ] \
 cat 1>&2 <<'EOF'
 Error: Cannot delete the only VPN user from /etc/ppp/chap-secrets
        and/or /etc/ipsec.d/passwd.
-       Aborting. No changes were made.
 EOF
   exit 1
 fi
@@ -97,7 +95,7 @@ Username: $VPN_USER
 
 EOF
 
-printf "Do you wish to continue? [y/N] "
+printf "Do you want to continue? [y/N] "
 read -r response
 case $response in
   [yY][eE][sS]|[yY])
@@ -106,9 +104,7 @@ case $response in
     echo
     ;;
   *)
-    echo
-    echo "Aborting. No changes were made."
-    echo
+    echo "Abort. No changes were made."
     exit 1
     ;;
 esac
