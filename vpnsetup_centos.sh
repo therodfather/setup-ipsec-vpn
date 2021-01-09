@@ -1,14 +1,14 @@
 #!/bin/sh
 #
-# Script for automatic setup of an IPsec VPN server on CentOS/RHEL 7 and 8.
-# Works on any dedicated server or virtual private server (VPS) except OpenVZ.
+# Script for automatic setup of an IPsec VPN server on CentOS/RHEL 7 and 8
+# Works on any dedicated server or virtual private server (VPS)
 #
 # DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
 #
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2015-2020 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2015-2021 Lin Song <linsongui@gmail.com>
 # Based on the work of Thomas Sarlandie (Copyright 2012)
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
@@ -49,14 +49,24 @@ check_ip() {
 
 vpnsetup() {
 
-if ! grep -qs -e "release 7" -e "release 8" /etc/redhat-release; then
+os_type=centos
+os_arch=$(uname -m | tr -dc 'A-Za-z0-9_-')
+if grep -qs "Red Hat" /etc/redhat-release; then
+  os_type=rhel
+fi
+
+if grep -qs "release 7" /etc/redhat-release; then
+  os_ver=7
+elif grep -qs "release 8" /etc/redhat-release; then
+  os_ver=8
+else
   echo "Error: This script only supports CentOS/RHEL 7 and 8." >&2
   echo "For Ubuntu/Debian, use https://git.io/vpnsetup" >&2
   exit 1
 fi
 
 if [ -f /proc/user_beancounters ]; then
-  exiterr "OpenVZ VPS is not supported. Try OpenVPN: github.com/Nyr/openvpn-install"
+  exiterr "OpenVZ VPS is not supported."
 fi
 
 if [ "$(id -u)" != 0 ]; then
@@ -67,7 +77,7 @@ def_iface=$(route 2>/dev/null | grep -m 1 '^default' | grep -o '[^ ]*$')
 [ -z "$def_iface" ] && def_iface=$(ip -4 route list 0/0 2>/dev/null | grep -m 1 -Po '(?<=dev )(\S+)')
 def_state=$(cat "/sys/class/net/$def_iface/operstate" 2>/dev/null)
 if [ -n "$def_state" ] && [ "$def_state" != "down" ]; then
-  case "$def_iface" in
+  case $def_iface in
     wl*)
       exiterr "Wireless interface '$def_iface' detected. DO NOT run this script on your PC or Mac!"
       ;;
@@ -148,6 +158,7 @@ REPO1='--enablerepo=epel'
 REPO2='--enablerepo=*server-*optional*'
 REPO3='--enablerepo=*releases-optional*'
 REPO4='--enablerepo=[Pp]ower[Tt]ools'
+[ "$os_type" = "rhel" ] && REPO4='--enablerepo=codeready-builder-for-rhel-8-*'
 
 yum -y install nss-devel nspr-devel pkgconfig pam-devel \
   libcap-ng-devel libselinux-devel curl-devel nss-tools \
@@ -156,13 +167,10 @@ yum -y install nss-devel nspr-devel pkgconfig pam-devel \
 yum "$REPO1" -y install xl2tpd || exiterr2
 
 use_nft=0
-if grep -qs "release 7" /etc/redhat-release; then
+if [ "$os_ver" = "7" ]; then
   yum -y install systemd-devel iptables-services || exiterr2
   yum "$REPO2" "$REPO3" -y install libevent-devel fipscheck-devel || exiterr2
 else
-  if grep -qs "Red Hat" /etc/redhat-release; then
-    REPO4='--enablerepo=codeready-builder-for-rhel-8-*'
-  fi
   yum "$REPO4" -y install systemd-devel libevent-devel fipscheck-devel || exiterr2
   if systemctl is-active --quiet firewalld.service \
     || grep -qs "hwdsl2 VPN script" /etc/sysconfig/nftables.conf; then
@@ -229,7 +237,6 @@ version 2.0
 
 config setup
   virtual-private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12,%v4:!$L2TP_NET,%v4:!$XAUTH_NET
-  protostack=netkey
   interfaces=%defaultroute
   uniqueids=no
 
@@ -487,6 +494,18 @@ mkdir -p /run/pluto
 service fail2ban restart 2>/dev/null
 service ipsec restart 2>/dev/null
 service xl2tpd restart 2>/dev/null
+
+swan_ver_url="https://dl.ls20.com/v1/$os_type/$os_ver/swanver?arch=$os_arch&ver=$SWAN_VER"
+swan_ver_latest=$(wget -t 3 -T 15 -qO- "$swan_ver_url")
+if printf '%s' "$swan_ver_latest" | grep -Eq '^([3-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])$' \
+  && [ "$SWAN_VER" != "$swan_ver_latest" ]; then
+cat <<EOF
+
+Note: A newer version of Libreswan ($swan_ver_latest) is available. To update, run:
+  wget https://git.io/vpnupgrade-centos -O vpnupgrade.sh
+  sudo sh vpnupgrade.sh
+EOF
+fi
 
 cat <<EOF
 

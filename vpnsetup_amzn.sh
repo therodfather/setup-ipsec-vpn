@@ -1,13 +1,14 @@
 #!/bin/sh
 #
-# Script for automatic setup of an IPsec VPN server on Amazon Linux 2.
+# Script for automatic setup of an IPsec VPN server on Amazon Linux 2
+# Works on any dedicated server or virtual private server (VPS)
 #
 # DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
 #
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2020 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2020-2021 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -47,6 +48,7 @@ check_ip() {
 
 vpnsetup() {
 
+os_arch=$(uname -m | tr -dc 'A-Za-z0-9_-')
 if ! grep -qs "Amazon Linux release 2" /etc/system-release; then
   echo "Error: This script only supports Amazon Linux 2." >&2
   echo "For Ubuntu/Debian, use https://git.io/vpnsetup" >&2
@@ -62,7 +64,7 @@ def_iface=$(route 2>/dev/null | grep -m 1 '^default' | grep -o '[^ ]*$')
 [ -z "$def_iface" ] && def_iface=$(ip -4 route list 0/0 2>/dev/null | grep -m 1 -Po '(?<=dev )(\S+)')
 def_state=$(cat "/sys/class/net/$def_iface/operstate" 2>/dev/null)
 if [ -n "$def_state" ] && [ "$def_state" != "down" ]; then
-  case "$def_iface" in
+  case $def_iface in
     wl*)
       exiterr "Wireless interface '$def_iface' detected. DO NOT run this script on your PC or Mac!"
       ;;
@@ -204,7 +206,6 @@ version 2.0
 
 config setup
   virtual-private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12,%v4:!$L2TP_NET,%v4:!$XAUTH_NET
-  protostack=netkey
   interfaces=%defaultroute
   uniqueids=no
 
@@ -425,6 +426,18 @@ mkdir -p /run/pluto
 service fail2ban restart 2>/dev/null
 service ipsec restart 2>/dev/null
 service xl2tpd restart 2>/dev/null
+
+swan_ver_url="https://dl.ls20.com/v1/amzn/2/swanver?arch=$os_arch&ver=$SWAN_VER"
+swan_ver_latest=$(wget -t 3 -T 15 -qO- "$swan_ver_url")
+if printf '%s' "$swan_ver_latest" | grep -Eq '^([3-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])$' \
+  && [ "$SWAN_VER" != "$swan_ver_latest" ]; then
+cat <<EOF
+
+Note: A newer version of Libreswan ($swan_ver_latest) is available. To update, run:
+  wget https://git.io/vpnupgrade-amzn -O vpnupgrade.sh
+  sudo sh vpnupgrade.sh
+EOF
+fi
 
 cat <<EOF
 

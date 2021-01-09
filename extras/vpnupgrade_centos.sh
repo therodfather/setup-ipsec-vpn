@@ -5,7 +5,7 @@
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2016-2020 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2016-2021 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -25,7 +25,17 @@ exiterr2() { exiterr "'yum install' failed."; }
 
 vpnupgrade() {
 
-if ! grep -qs -e "release 7" -e "release 8" /etc/redhat-release; then
+os_type=centos
+os_arch=$(uname -m | tr -dc 'A-Za-z0-9_-')
+if grep -qs "Red Hat" /etc/redhat-release; then
+  os_type=rhel
+fi
+
+if grep -qs "release 7" /etc/redhat-release; then
+  os_ver=7
+elif grep -qs "release 8" /etc/redhat-release; then
+  os_ver=8
+else
   echo "Error: This script only supports CentOS/RHEL 7 and 8." >&2
   echo "For Ubuntu/Debian, use https://git.io/vpnupgrade" >&2
   exit 1
@@ -39,7 +49,7 @@ if [ "$(id -u)" != 0 ]; then
   exiterr "Script must be run as root. Try 'sudo sh $0'"
 fi
 
-case "$SWAN_VER" in
+case $SWAN_VER in
   3.2[679]|3.3[12]|4.1)
     /bin/true
     ;;
@@ -54,7 +64,7 @@ EOF
 esac
 
 ipsec_ver=$(/usr/local/sbin/ipsec --version 2>/dev/null)
-ipsec_ver_short=$(printf '%s' "$ipsec_ver" | sed -e 's/Linux Libreswan/Libreswan/' -e 's/ (netkey) on .*//')
+ipsec_ver_short=$(printf '%s' "$ipsec_ver" | sed -e 's/Linux Libreswan/Libreswan/' -e 's/ (netkey).*//')
 swan_ver_old=$(printf '%s' "$ipsec_ver_short" | sed -e 's/Libreswan //')
 if ! printf '%s' "$ipsec_ver" | grep -q "Libreswan"; then
 cat 1>&2 <<'EOF'
@@ -62,6 +72,29 @@ Error: This script requires Libreswan already installed.
   See: https://github.com/hwdsl2/setup-ipsec-vpn
 EOF
   exit 1
+fi
+
+swan_ver_cur=4.1
+swan_ver_url="https://dl.ls20.com/v1/$os_type/$os_ver/swanverupg?arch=$os_arch&ver1=$swan_ver_old&ver2=$SWAN_VER"
+swan_ver_latest=$(wget -t 3 -T 15 -qO- "$swan_ver_url")
+if printf '%s' "$swan_ver_latest" | grep -Eq '^([3-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])$' \
+  && [ "$swan_ver_cur" != "$swan_ver_latest" ]; then
+  echo "Note: A newer version of Libreswan ($swan_ver_latest) is available."
+  echo "To update to the new version, exit the script and run:"
+  echo "  wget https://git.io/vpnupgrade-centos -O vpnupgrade.sh"
+  echo "  sudo sh vpnupgrade.sh"
+  echo
+  printf "Do you want to continue anyway? [y/N] "
+  read -r response
+  case $response in
+    [yY][eE][sS]|[yY])
+      echo
+      ;;
+    *)
+      echo "Abort. No changes were made."
+      exit 1
+      ;;
+  esac
 fi
 
 if [ "$swan_ver_old" = "$SWAN_VER" ]; then
@@ -95,24 +128,22 @@ Version to install: Libreswan $SWAN_VER
 EOF
 
 cat <<'EOF'
-NOTE: This script will make the following changes to your IPsec config:
+NOTE: This script will make the following changes to your VPN configuration:
     - Fix obsolete ipsec.conf and/or ikev2.conf options
     - Optimize VPN ciphers
 
-    Your other VPN configuration files will not be modified.
+    Your other VPN config files will not be modified.
 
 EOF
 
-case "$SWAN_VER" in
-  3.2[679]|3.3[12])
+if [ "$SWAN_VER" != "4.1" ]; then
 cat <<'EOF'
 WARNING: Older versions of Libreswan could contain known security vulnerabilities.
     See https://libreswan.org/security/ for more information.
     Are you sure you want to install an older version?
 
 EOF
-    ;;
-esac
+fi
 
 printf "Do you want to continue? [y/N] "
 read -r response
@@ -144,14 +175,12 @@ yum -y install nss-devel nspr-devel pkgconfig pam-devel \
 REPO1='--enablerepo=*server-*optional*'
 REPO2='--enablerepo=*releases-optional*'
 REPO3='--enablerepo=[Pp]ower[Tt]ools'
+[ "$os_type" = "rhel" ] && REPO3='--enablerepo=codeready-builder-for-rhel-8-*'
 
-if grep -qs "release 7" /etc/redhat-release; then
+if [ "$os_ver" = "7" ]; then
   yum -y install systemd-devel || exiterr2
   yum "$REPO1" "$REPO2" -y install libevent-devel fipscheck-devel || exiterr2
 else
-  if grep -qs "Red Hat" /etc/redhat-release; then
-    REPO3='--enablerepo=codeready-builder-for-rhel-8-*'
-  fi
   yum "$REPO3" -y install systemd-devel libevent-devel fipscheck-devel || exiterr2
 fi
 
@@ -230,7 +259,7 @@ elif [ "$dns_state" = "2" ]; then
   sed -i "s/^[[:space:]]\+modecfgdns1=.\+/  modecfgdns=$DNS_SRV1/" /etc/ipsec.conf
 fi
 
-case "$SWAN_VER" in
+case $SWAN_VER in
   3.29|3.3[12]|4.1)
     sed -i "/ikev2=never/d" /etc/ipsec.conf
     sed -i "/conn shared/a \  ikev2=never" /etc/ipsec.conf

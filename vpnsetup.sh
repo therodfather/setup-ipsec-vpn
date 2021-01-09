@@ -1,14 +1,14 @@
 #!/bin/sh
 #
-# Script for automatic setup of an IPsec VPN server on Ubuntu and Debian.
-# Works on any dedicated server or virtual private server (VPS) except OpenVZ.
+# Script for automatic setup of an IPsec VPN server on Ubuntu and Debian
+# Works on any dedicated server or virtual private server (VPS)
 #
 # DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
 #
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2014-2020 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2014-2021 Lin Song <linsongui@gmail.com>
 # Based on the work of Thomas Sarlandie (Copyright 2012)
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
@@ -50,26 +50,35 @@ check_ip() {
 vpnsetup() {
 
 os_type=$(lsb_release -si 2>/dev/null)
-if [ -z "$os_type" ]; then
-  [ -f /etc/os-release  ] && os_type=$(. /etc/os-release  && printf '%s' "$ID")
-  [ -f /etc/lsb-release ] && os_type=$(. /etc/lsb-release && printf '%s' "$DISTRIB_ID")
-fi
-if ! printf '%s' "$os_type" | head -n 1 | grep -qiF -e ubuntu -e debian -e raspbian; then
-  echo "Error: This script only supports Ubuntu and Debian." >&2
-  echo "For CentOS/RHEL, use https://git.io/vpnsetup-centos" >&2
-  exit 1
-fi
+os_arch=$(uname -m | tr -dc 'A-Za-z0-9_-')
+[ -z "$os_type" ] && [ -f /etc/os-release ] && os_type=$(. /etc/os-release && printf '%s' "$ID")
+case $os_type in
+  [Uu]buntu)
+    os_type=ubuntu
+    ;;
+  [Dd]ebian)
+    os_type=debian
+    ;;
+  [Rr]aspbian)
+    os_type=raspbian
+    ;;
+  *)
+    echo "Error: This script only supports Ubuntu and Debian." >&2
+    echo "For CentOS/RHEL, use https://git.io/vpnsetup-centos" >&2
+    exit 1
+    ;;
+esac
 
-debian_ver=$(sed 's/\..*//' /etc/debian_version)
-if [ "$debian_ver" = "8" ]; then
-  exiterr "Debian 8 is not supported."
+os_ver=$(sed 's/\..*//' /etc/debian_version | tr -dc 'A-Za-z0-9')
+if [ "$os_ver" = "8" ] || [ "$os_ver" = "jessiesid" ]; then
+  exiterr "Debian 8 or Ubuntu < 16.04 is not supported."
 fi
-if [ "$debian_ver" = "10" ] && [ ! -e /dev/ppp ]; then
+if [ "$os_ver" = "10" ] && [ ! -e /dev/ppp ]; then
   exiterr "/dev/ppp is missing. Debian 10 users, see: https://git.io/vpndebian10"
 fi
 
 if [ -f /proc/user_beancounters ]; then
-  exiterr "OpenVZ VPS is not supported. Try OpenVPN: github.com/Nyr/openvpn-install"
+  exiterr "OpenVZ VPS is not supported."
 fi
 
 if [ "$(id -u)" != 0 ]; then
@@ -81,7 +90,7 @@ def_iface=$(route 2>/dev/null | grep -m 1 '^default' | grep -o '[^ ]*$')
 def_state=$(cat "/sys/class/net/$def_iface/operstate" 2>/dev/null)
 if [ -n "$def_state" ] && [ "$def_state" != "down" ]; then
   if ! uname -m | grep -qi -e '^arm' -e '^aarch64'; then
-    case "$def_iface" in
+    case $def_iface in
       wl*)
         exiterr "Wireless interface '$def_iface' detected. DO NOT run this script on your PC or Mac!"
         ;;
@@ -142,7 +151,7 @@ PKG_LK=/var/lib/dpkg/lock
 while fuser "$APT_LK" "$PKG_LK" >/dev/null 2>&1 \
   || lsof "$APT_LK" >/dev/null 2>&1 || lsof "$PKG_LK" >/dev/null 2>&1; do
   [ "$count" = "0" ] && bigecho "Waiting for apt to be available..."
-  [ "$count" -ge "60" ] && exiterr "Could not get apt/dpkg lock."
+  [ "$count" -ge "100" ] && exiterr "Could not get apt/dpkg lock."
   count=$((count+1))
   printf '%s' '.'
   sleep 3
@@ -247,7 +256,6 @@ version 2.0
 
 config setup
   virtual-private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12,%v4:!$L2TP_NET,%v4:!$XAUTH_NET
-  protostack=netkey
   interfaces=%defaultroute
   uniqueids=no
 
@@ -500,6 +508,18 @@ mkdir -p /run/pluto
 service fail2ban restart 2>/dev/null
 service ipsec restart 2>/dev/null
 service xl2tpd restart 2>/dev/null
+
+swan_ver_url="https://dl.ls20.com/v1/$os_type/$os_ver/swanver?arch=$os_arch&ver=$SWAN_VER"
+swan_ver_latest=$(wget -t 3 -T 15 -qO- "$swan_ver_url")
+if printf '%s' "$swan_ver_latest" | grep -Eq '^([3-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])$' \
+  && [ "$SWAN_VER" != "$swan_ver_latest" ]; then
+cat <<EOF
+
+Note: A newer version of Libreswan ($swan_ver_latest) is available. To update, run:
+  wget https://git.io/vpnupgrade -O vpnupgrade.sh
+  sudo sh vpnupgrade.sh
+EOF
+fi
 
 cat <<EOF
 

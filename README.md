@@ -58,7 +58,7 @@ Amazon Linux 2
 </summary>
 
 ```bash
-wget https://bit.ly/vpnsetup-amzn -O vpnsetup.sh && sudo sh vpnsetup.sh
+wget https://git.io/vpnsetup-amzn -O vpnsetup.sh && sudo sh vpnsetup.sh
 ```
 </details>
 
@@ -88,7 +88,7 @@ A newly created <a href="https://aws.amazon.com/ec2/" target="_blank">Amazon EC2
 - <a href="https://aws.amazon.com/partners/redhat/faqs/" target="_blank">Red Hat Enterprise Linux (RHEL) 8 or 7</a>
 - <a href="https://aws.amazon.com/amazon-linux-2/" target="_blank">Amazon Linux 2</a>
 
-See <a href="https://blog.ls20.com/ipsec-l2tp-vpn-auto-setup-for-ubuntu-12-04-on-amazon-ec2/#vpnsetup" target="_blank">detailed instructions</a> and <a href="https://aws.amazon.com/ec2/pricing/" target="_blank">EC2 pricing</a>. Alternatively, you can deploy rapidly using <a href="aws/README.md" target="_blank">CloudFormation</a>.
+See <a href="https://blog.ls20.com/ipsec-l2tp-vpn-auto-setup-for-ubuntu-12-04-on-amazon-ec2/#vpnsetup" target="_blank">detailed instructions</a> and <a href="https://aws.amazon.com/ec2/pricing/" target="_blank">EC2 pricing</a>. Alternatively, you may also deploy rapidly using <a href="aws/README.md" target="_blank">CloudFormation</a>.
 
 **-OR-**
 
@@ -96,20 +96,20 @@ A dedicated server or virtual private server (VPS), freshly installed with one o
 
 This also includes Linux VMs in public clouds, such as <a href="https://blog.ls20.com/digitalocean" target="_blank">DigitalOcean</a>, <a href="https://blog.ls20.com/vultr" target="_blank">Vultr</a>, <a href="https://blog.ls20.com/linode" target="_blank">Linode</a>, <a href="https://cloud.google.com/compute/" target="_blank">Google Compute Engine</a>, <a href="https://aws.amazon.com/lightsail/" target="_blank">Amazon Lightsail</a>, <a href="https://azure.microsoft.com" target="_blank">Microsoft Azure</a>, <a href="https://www.ibm.com/cloud/virtual-servers" target="_blank">IBM Cloud</a>, <a href="https://www.ovh.com/world/vps/" target="_blank">OVH</a> and <a href="https://www.rackspace.com" target="_blank">Rackspace</a>.
 
-<a href="azure/README.md" target="_blank"><img src="docs/images/azure-deploy-button.png" alt="Deploy to Azure" /></a> <a href="http://dovpn.carlfriess.com/" target="_blank"><img src="docs/images/do-install-button.png" alt="Install on DigitalOcean" /></a> <a href="https://cloud.linode.com/stackscripts/37239" target="_blank"><img src="docs/images/linode-deploy-button.png" alt="Deploy to Linode" /></a>
+<a href="aws/README.md" target="_blank"><img src="docs/images/aws-deploy-button.png" alt="Deploy to AWS" /></a> <a href="azure/README.md" target="_blank"><img src="docs/images/azure-deploy-button.png" alt="Deploy to Azure" /></a> <a href="http://dovpn.carlfriess.com/" target="_blank"><img src="docs/images/do-install-button.png" alt="Install on DigitalOcean" /></a> <a href="https://cloud.linode.com/stackscripts/37239" target="_blank"><img src="docs/images/linode-deploy-button.png" alt="Deploy to Linode" /></a>
 
 <a href="https://blog.ls20.com/ipsec-l2tp-vpn-auto-setup-for-ubuntu-12-04-on-amazon-ec2/#gettingavps" target="_blank">**&raquo; I want to run my own VPN but don't have a server for that**</a>
 
 Advanced users can set up the VPN server on a $35 <a href="https://www.raspberrypi.org" target="_blank">Raspberry Pi</a>. See <a href="https://elasticbyte.net/posts/setting-up-a-native-cisco-ipsec-vpn-server-using-a-raspberry-pi/" target="_blank">[1]</a> <a href="https://www.stewright.me/2018/07/create-a-raspberry-pi-vpn-server-using-l2tpipsec/" target="_blank">[2]</a>.
 
 <a name="debian-10-note"></a>
-\* Debian 10 users should use the standard Linux kernel (not the "cloud" version). Read more <a href="docs/clients.md#debian-10-kernel" target="_blank">here</a>.   
+\* Debian 10 users should use the standard Linux kernel (not the "cloud" version). Read more <a href="docs/clients.md#debian-10-kernel" target="_blank">here</a>. If using Debian 10 on EC2, you must first switch to the standard Linux kernel before running the VPN setup script.   
 
 :warning: **DO NOT** run these scripts on your PC or Mac! They should only be used on a server!
 
 ## Installation
 
-First, update your system with `apt-get update && apt-get dist-upgrade` (Ubuntu/Debian) or `yum update` (CentOS/RHEL/Amazon Linux 2) and reboot. This is optional, but recommended.
+First, update your system with `apt-get update && apt-get dist-upgrade` (Ubuntu/Debian) or `yum update` and reboot. This is optional, but recommended.
 
 To install the VPN, please choose one of the following options:
 
@@ -131,6 +131,7 @@ CentOS & RHEL
 </summary>
 
 ```bash
+yum -y install wget
 wget https://git.io/vpnsetup-centos -O vpnsetup.sh && sudo sh vpnsetup.sh
 ```
 </details>
@@ -141,7 +142,7 @@ Amazon Linux 2
 </summary>
 
 ```bash
-wget https://bit.ly/vpnsetup-amzn -O vpnsetup.sh && sudo sh vpnsetup.sh
+wget https://git.io/vpnsetup-amzn -O vpnsetup.sh && sudo sh vpnsetup.sh
 ```
 </details>
 
@@ -166,6 +167,7 @@ CentOS & RHEL
 </summary>
 
 ```bash
+yum -y install wget nano
 wget https://git.io/vpnsetup-centos -O vpnsetup.sh
 nano -w vpnsetup.sh
 [Replace with your own values: YOUR_IPSEC_PSK, YOUR_USERNAME and YOUR_PASSWORD]
@@ -179,7 +181,7 @@ Amazon Linux 2
 </summary>
 
 ```bash
-wget https://bit.ly/vpnsetup-amzn -O vpnsetup.sh
+wget https://git.io/vpnsetup-amzn -O vpnsetup.sh
 nano -w vpnsetup.sh
 [Replace with your own values: YOUR_IPSEC_PSK, YOUR_USERNAME and YOUR_PASSWORD]
 sudo sh vpnsetup.sh
@@ -214,6 +216,7 @@ CentOS & RHEL
 ```bash
 # All values MUST be placed inside 'single quotes'
 # DO NOT use these special characters within values: \ " '
+yum -y install wget
 wget https://git.io/vpnsetup-centos -O vpnsetup.sh
 sudo VPN_IPSEC_PSK='your_ipsec_pre_shared_key' \
 VPN_USER='your_vpn_username' \
@@ -230,7 +233,7 @@ Amazon Linux 2
 ```bash
 # All values MUST be placed inside 'single quotes'
 # DO NOT use these special characters within values: \ " '
-wget https://bit.ly/vpnsetup-amzn -O vpnsetup.sh
+wget https://git.io/vpnsetup-amzn -O vpnsetup.sh
 sudo VPN_IPSEC_PSK='your_ipsec_pre_shared_key' \
 VPN_USER='your_vpn_username' \
 VPN_PASSWORD='your_vpn_password' \
@@ -238,7 +241,7 @@ sh vpnsetup.sh
 ```
 </details>
 
-**Note:** If unable to download via `wget`, you may also open <a href="vpnsetup.sh" target="_blank">vpnsetup.sh</a> and click the **`Raw`** button. Press `Ctrl-A` to select all, `Ctrl-C` to copy, then paste into your favorite editor.
+**Note:** If unable to download via `wget`, you may also open <a href="vpnsetup.sh" target="_blank">vpnsetup.sh</a>, <a href="vpnsetup_centos.sh" target="_blank">vpnsetup_centos.sh</a> or <a href="vpnsetup_amzn.sh" target="_blank">vpnsetup_amzn.sh</a>, and click the **`Raw`** button on the right. Press `Ctrl-A` to select all, `Ctrl-C` to copy, then paste into your favorite editor.
 
 ## Next steps
 
@@ -262,7 +265,7 @@ Enjoy your very own VPN! :sparkles::tada::rocket::sparkles:
 
 **Android users**: If you encounter connection issues, try <a href="docs/clients.md#android-mtumss-issues" target="_blank">these steps</a>.
 
-The same VPN account can be used by your multiple devices. However, due to an IPsec/L2TP limitation, if you wish to connect multiple devices simultaneously from behind the same NAT (e.g. home router), you must use only <a href="docs/clients-xauth.md" target="_blank">IPsec/XAuth mode</a>, or set up <a href="docs/ikev2-howto.md" target="_blank">IKEv2</a>.
+The same VPN account can be used by your multiple devices. However, due to an IPsec/L2TP limitation, if you wish to connect multiple devices simultaneously from behind the same NAT (e.g. home router), you must use only <a href="docs/clients-xauth.md" target="_blank">IPsec/XAuth mode</a>, or <a href="docs/ikev2-howto.md" target="_blank">set up IKEv2</a>.
 
 If you wish to view or update VPN user accounts, see <a href="docs/manage-users.md" target="_blank">Manage VPN Users</a>. Helper scripts are included for convenience.
 
@@ -308,7 +311,7 @@ Amazon Linux 2
 </summary>
 
 ```bash
-wget https://bit.ly/vpnupgrade-amzn -O vpnupgrade.sh && sudo sh vpnupgrade.sh
+wget https://git.io/vpnupgrade-amzn -O vpnupgrade.sh && sudo sh vpnupgrade.sh
 ```
 </details>
 
@@ -320,19 +323,17 @@ wget https://bit.ly/vpnupgrade-amzn -O vpnupgrade.sh && sudo sh vpnupgrade.sh
 
 ## Uninstallation
 
-Please refer to <a href="docs/uninstall.md" target="_blank">Uninstall the VPN</a>.
+See <a href="docs/uninstall.md" target="_blank">Uninstall the VPN</a>.
 
 ## See also
 
 - <a href="https://github.com/hwdsl2/docker-ipsec-vpn-server" target="_blank">IPsec VPN Server on Docker</a>
-- <a href="https://github.com/trailofbits/algo" target="_blank">Algo VPN</a>
-- <a href="https://github.com/StreisandEffect/streisand" target="_blank">Streisand</a>
-- <a href="https://github.com/Nyr/openvpn-install" target="_blank">OpenVPN Install</a>
 
 ## License
 
-Copyright (C) 2014-2020 <a href="https://www.linkedin.com/in/linsongui" target="_blank">Lin Song</a> <a href="https://www.linkedin.com/in/linsongui" target="_blank"><img src="https://static.licdn.com/scds/common/u/img/webpromo/btn_viewmy_160x25.png" width="160" height="25" border="0" alt="View my profile on LinkedIn"></a>   
+Copyright (C) 2014-2021 <a href="https://www.linkedin.com/in/linsongui" target="_blank">Lin Song</a> <a href="https://www.linkedin.com/in/linsongui" target="_blank"><img src="https://static.licdn.com/scds/common/u/img/webpromo/btn_viewmy_160x25.png" width="160" height="25" border="0" alt="View my profile on LinkedIn"></a>   
 Based on <a href="https://github.com/sarfata/voodooprivacy" target="_blank">the work of Thomas Sarlandie</a> (Copyright 2012)
 
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/3.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/3.0/88x31.png" /></a>   
 This work is licensed under the <a href="http://creativecommons.org/licenses/by-sa/3.0/" target="_blank">Creative Commons Attribution-ShareAlike 3.0 Unported License</a>  
 Attribution required: please include my name in any derivative and let me know how you have improved it!
